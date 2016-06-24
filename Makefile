@@ -18,7 +18,8 @@ PTHREADS_LIBS=-lpthread
 BOOST_LIBS = -I/opt/boost/include -L/opt/boost/lib -lboost_thread
 ARBB_LIBS=$(TBB_LIBS) -larbb -L/opt/intel/arbb/1.0.0.022/lib/intel64/ -I/opt/intel/arbb/1.0.0.022/include/
 
-TARGETS := dd_serial dd_omp dd_threads # dd_boost # dd_hadoop
+TARGETS := dd_serial dd_omp dd_threads 
+	# dd_boost # dd_hadoop
 all:  $(TARGETS)
 #	hadoop jar DDHadoop.jar edu.stolaf.cs.DDHadoop $(DFS)/in $(DFS)/out
 
@@ -51,3 +52,8 @@ tgz:
 
 clean:
 	rm -f *.o *~ $(TARGETS) 
+
+test:
+	@for x in $(TARGETS) ;\
+	do  echo ========== ./$$x ; time ./$$x ; \
+	done
