@@ -1,10 +1,13 @@
-/** drug design example with OpenMP */
+/** drug design example with C++11 threads and tbb containers */
 
 #include <iostream>
 #include <string>
+#include <queue>
 #include <vector>
 #include <algorithm>
-#include <atomic>
+#include <tbb/concurrent_vector.h>
+#include <tbb/concurrent_queue.h>
+#include <thread>
 #include <cstdlib>
 
 
@@ -16,21 +19,6 @@
 
 using namespace std;
 
-template <class T>
-class shuffle_vector : public vector<T> {
-protected:
-  atomic_flag flag;  
-public:
-  shuffle_vector() : vector<T>(), flag(ATOMIC_FLAG_INIT) {}
-  void push_back(const T& val) {
-    while (flag.test_and_set())
-      ;
-    // calling thread has mutually exclusive access to push_back() method
-    vector<T>::push_back(val);
-    flag.clear();  // relinquish mutually exclusive access
-  }
-
-};
 
 // key-value pairs, used for both Map() out/Reduce() in and for Reduce() out
 struct Pair {
@@ -49,18 +37,19 @@ private:
   string protein;
 
 
-  vector<string> tasks;
-  shuffle_vector<Pair> pairs;
+  tbb::concurrent_bounded_queue<string> tasks;
+  tbb::concurrent_vector<Pair> pairs;
   vector<Pair> results;
 
 
-  void Generate_tasks(vector<string> &q);
-  void Map(const string &str, shuffle_vector<Pair> &pairs);
-  void do_sort(shuffle_vector<Pair> &vec);
-  int Reduce(int key, const shuffle_vector<Pair> &pairs, int index, 
+  void Generate_tasks(tbb::concurrent_bounded_queue<string> &q);
+  void do_Maps(void);
+  void Map(const string &str, tbb::concurrent_vector<Pair> &pairs);
+  void do_sort(tbb::concurrent_vector<Pair> &vec);
+  int Reduce(int key, const tbb::concurrent_vector<Pair> &pairs, int index, 
              string &values);
 public:
-  MR() {}
+  MR() { }
   const vector<Pair> &run(int ml, int nl, int nt, const string& p);
 };
 
@@ -96,13 +85,6 @@ int main(int argc, char **argv) {
        << "  nligands=" << nligands
        << "  nthreads=" << nthreads << endl;
 
-#ifdef _OPENMP
-   cout << "OMP defined" << endl;
-#else
-   cout << "OMP not defined" << endl;
-#endif
-
-
   MR map_reduce;
   vector<Pair> results = 
     map_reduce.run(max_ligand, nligands, nthreads, protein);
@@ -128,11 +110,15 @@ const vector<Pair> &MR::run(int ml, int nl, int nt, const string& p) {
   // assert -- tasks is non-empty
 
 
-#pragma omp parallel for num_threads(nthreads)
-  for (int t = 0;  t < tasks.size();  t++) {
-    Map(tasks[t], pairs);
-  }
-  
+  thread *pool = new thread[nthreads];
+  for (int i = 0;  i < nthreads;  i++)
+    // Note:  second arg this required to use method do_Maps as thread body
+    pool[i] = thread(&MR::do_Maps, this);
+
+  for (int i = 0;  i < nthreads;  i++)
+    pool[i].join();
+
+
   do_sort(pairs);
 
 
@@ -151,14 +137,20 @@ const vector<Pair> &MR::run(int ml, int nl, int nt, const string& p) {
 }
 
 
-void MR::Generate_tasks(vector<string> &vec) {
-  for (int i = 0;  i < nligands;  i++) {
-    vec.push_back(Help::get_ligand(max_ligand));
-  }
+void MR::Generate_tasks(tbb::concurrent_bounded_queue<string> &q) {
+  for (int i = 0;  i < nligands;  i++) 
+    q.push(Help::get_ligand(max_ligand));
 }
 
 
-void MR::Map(const string &ligand, shuffle_vector<Pair> &pairs) {
+void MR::do_Maps(void) {
+  string lig;
+  while (tasks.try_pop(lig)) 
+    Map(lig, pairs);
+}
+
+
+void MR::Map(const string &ligand, tbb::concurrent_vector<Pair> &pairs) {
   Pair p(Help::score(ligand.c_str(), protein.c_str()), ligand);
   pairs.push_back(p);
 }
@@ -169,12 +161,12 @@ bool compare(const Pair &p1, const Pair &p2) {
 }
 
 
-void MR::do_sort(shuffle_vector<Pair> &vec) {
+void MR::do_sort(tbb::concurrent_vector<Pair> &vec) {
   sort(vec.begin(), vec.end(), compare);
 }
 
 
-int MR::Reduce(int key, const shuffle_vector<Pair> &pairs, int index, 
+int MR::Reduce(int key, const tbb::concurrent_vector<Pair> &pairs, int index, 
            string &values) {
   while (index < pairs.size() && pairs[index].key == key) 
     values += pairs[index++].val + " ";

@@ -1,11 +1,13 @@
-/** drug design example with OpenMP */
+/** drug design example with OpenMP and tbb containers */
 
 #include <iostream>
+#include <queue>
 #include <string>
 #include <vector>
 #include <algorithm>
-#include <atomic>
 #include <cstdlib>
+#include <tbb/concurrent_vector.h>
+#include <tbb/parallel_sort.h>
 
 
 #define DEFAULT_max_ligand 7
@@ -16,21 +18,6 @@
 
 using namespace std;
 
-template <class T>
-class shuffle_vector : public vector<T> {
-protected:
-  atomic_flag flag;  
-public:
-  shuffle_vector() : vector<T>(), flag(ATOMIC_FLAG_INIT) {}
-  void push_back(const T& val) {
-    while (flag.test_and_set())
-      ;
-    // calling thread has mutually exclusive access to push_back() method
-    vector<T>::push_back(val);
-    flag.clear();  // relinquish mutually exclusive access
-  }
-
-};
 
 // key-value pairs, used for both Map() out/Reduce() in and for Reduce() out
 struct Pair {
@@ -50,14 +37,14 @@ private:
 
 
   vector<string> tasks;
-  shuffle_vector<Pair> pairs;
+  tbb::concurrent_vector<Pair> pairs;
   vector<Pair> results;
 
 
   void Generate_tasks(vector<string> &q);
-  void Map(const string &str, shuffle_vector<Pair> &pairs);
-  void do_sort(shuffle_vector<Pair> &vec);
-  int Reduce(int key, const shuffle_vector<Pair> &pairs, int index, 
+  void Map(const string &str, tbb::concurrent_vector<Pair> &pairs);
+  void do_sort(tbb::concurrent_vector<Pair> &vec);
+  int Reduce(int key, const tbb::concurrent_vector<Pair> &pairs, int index, 
              string &values);
 public:
   MR() {}
@@ -151,14 +138,14 @@ const vector<Pair> &MR::run(int ml, int nl, int nt, const string& p) {
 }
 
 
-void MR::Generate_tasks(vector<string> &vec) {
+void MR::Generate_tasks(vector<string> &q) {
   for (int i = 0;  i < nligands;  i++) {
-    vec.push_back(Help::get_ligand(max_ligand));
+    q.push_back(Help::get_ligand(max_ligand));
   }
 }
 
 
-void MR::Map(const string &ligand, shuffle_vector<Pair> &pairs) {
+void MR::Map(const string &ligand, tbb::concurrent_vector<Pair> &pairs) {
   Pair p(Help::score(ligand.c_str(), protein.c_str()), ligand);
   pairs.push_back(p);
 }
@@ -169,12 +156,12 @@ bool compare(const Pair &p1, const Pair &p2) {
 }
 
 
-void MR::do_sort(shuffle_vector<Pair> &vec) {
-  sort(vec.begin(), vec.end(), compare);
+void MR::do_sort(tbb::concurrent_vector<Pair> &vec) {
+  tbb::parallel_sort(vec.begin(), vec.end(), compare);
 }
 
 
-int MR::Reduce(int key, const shuffle_vector<Pair> &pairs, int index, 
+int MR::Reduce(int key, const tbb::concurrent_vector<Pair> &pairs, int index, 
            string &values) {
   while (index < pairs.size() && pairs[index].key == key) 
     values += pairs[index++].val + " ";

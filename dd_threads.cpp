@@ -1,14 +1,13 @@
-/** drug design example with C++11 threads and tbb containers */
+/** drug design example with C++11 threads */
+
 #include <iostream>
-#include <queue>
 #include <string>
+#include <queue>
 #include <vector>
 #include <algorithm>
-#include <cstdlib>
-#include <tbb/concurrent_vector.h>
-#include <tbb/concurrent_queue.h>
-#include <tbb/parallel_sort.h>
+#include <atomic>
 #include <thread>
+#include <cstdlib>
 
 
 #define DEFAULT_max_ligand 7
@@ -19,6 +18,47 @@
 
 using namespace std;
 
+
+// data structure to hold ligands
+template <class T>
+class ligand_queue : public queue<T> {
+protected:
+  atomic_flag flag;  
+public:
+  ligand_queue() : queue<T>(), flag(ATOMIC_FLAG_INIT) {}
+  bool try_pop(T& val) {
+    bool ret = false;
+    while (flag.test_and_set())
+      ;
+    // calling thread has mutually exclusive access to try_pop() method
+    if (!queue<T>::empty()) {
+      // at least one element in this queue
+      val = queue<T>::front();
+      queue<T>::pop();
+      ret = true;
+    }
+    flag.clear();  // relinquish mutually exclusive access
+    return ret;
+  }
+
+};
+
+// data structure to hold intermediate key-value pairs 
+template <class T>
+class shuffle_vector : public vector<T> {
+protected:
+  atomic_flag flag;  
+public:
+  shuffle_vector() : vector<T>(), flag(ATOMIC_FLAG_INIT) {}
+  void push_back(const T& val) {
+    while (flag.test_and_set())
+      ;
+    // calling thread has mutually exclusive access to push_back() method
+    vector<T>::push_back(val);
+    flag.clear();  // relinquish mutually exclusive access
+  }
+
+};
 
 // key-value pairs, used for both Map() out/Reduce() in and for Reduce() out
 struct Pair {
@@ -35,22 +75,21 @@ private:
   int nligands;
   int nthreads;
   string protein;
-  string SENTINEL;  // indicates end of task queue
 
 
-  tbb::concurrent_bounded_queue<string> tasks;
-  tbb::concurrent_vector<Pair> pairs;
+  ligand_queue<string> tasks;
+  shuffle_vector<Pair> pairs;
   vector<Pair> results;
 
 
-  void Generate_tasks(tbb::concurrent_bounded_queue<string> &q);
+  void Generate_tasks(ligand_queue<string> &q);
   void do_Maps(void);
-  void Map(const string &str, tbb::concurrent_vector<Pair> &pairs);
-  void do_sort(tbb::concurrent_vector<Pair> &vec);
-  int Reduce(int key, const tbb::concurrent_vector<Pair> &pairs, int index, 
+  void Map(const string &str, shuffle_vector<Pair> &pairs);
+  void do_sort(shuffle_vector<Pair> &vec);
+  int Reduce(int key, const shuffle_vector<Pair> &pairs, int index, 
              string &values);
 public:
-  MR() { SENTINEL=""; }
+  MR() { }
   const vector<Pair> &run(int ml, int nl, int nt, const string& p);
 };
 
@@ -113,8 +152,8 @@ const vector<Pair> &MR::run(int ml, int nl, int nt, const string& p) {
 
   thread *pool = new thread[nthreads];
   for (int i = 0;  i < nthreads;  i++)
+    // Note:  second arg this required to use method do_Maps as thread body
     pool[i] = thread(&MR::do_Maps, this);
-
 
   for (int i = 0;  i < nthreads;  i++)
     pool[i].join();
@@ -138,26 +177,20 @@ const vector<Pair> &MR::run(int ml, int nl, int nt, const string& p) {
 }
 
 
-void MR::Generate_tasks(tbb::concurrent_bounded_queue<string> &q) {
-  for (int i = 0;  i < nligands;  i++) {
+void MR::Generate_tasks(ligand_queue<string> &q) {
+  for (int i = 0;  i < nligands;  i++) 
     q.push(Help::get_ligand(max_ligand));
-  }
-  q.push(SENTINEL);
 }
 
 
 void MR::do_Maps(void) {
   string lig;
-  tasks.pop(lig);
-  while (lig != SENTINEL) {
+  while (tasks.try_pop(lig)) 
     Map(lig, pairs);
-    tasks.pop(lig);
-  }
-  tasks.push(SENTINEL);  // restore end marker for another thread
 }
 
 
-void MR::Map(const string &ligand, tbb::concurrent_vector<Pair> &pairs) {
+void MR::Map(const string &ligand, shuffle_vector<Pair> &pairs) {
   Pair p(Help::score(ligand.c_str(), protein.c_str()), ligand);
   pairs.push_back(p);
 }
@@ -168,12 +201,12 @@ bool compare(const Pair &p1, const Pair &p2) {
 }
 
 
-void MR::do_sort(tbb::concurrent_vector<Pair> &vec) {
-  tbb::parallel_sort(vec.begin(), vec.end(), compare);
+void MR::do_sort(shuffle_vector<Pair> &vec) {
+  sort(vec.begin(), vec.end(), compare);
 }
 
 
-int MR::Reduce(int key, const tbb::concurrent_vector<Pair> &pairs, int index, 
+int MR::Reduce(int key, const shuffle_vector<Pair> &pairs, int index, 
            string &values) {
   while (index < pairs.size() && pairs[index].key == key) 
     values += pairs[index++].val + " ";
