@@ -7,7 +7,6 @@
 #include <algorithm>
 #include <cstdlib>
 #include <tbb/concurrent_vector.h>
-#include <tbb/parallel_sort.h>
 
 
 #define DEFAULT_max_ligand 7
@@ -157,7 +156,7 @@ bool compare(const Pair &p1, const Pair &p2) {
 
 
 void MR::do_sort(tbb::concurrent_vector<Pair> &vec) {
-  tbb::parallel_sort(vec.begin(), vec.end(), compare);
+  sort(vec.begin(), vec.end(), compare);
 }
 
 
