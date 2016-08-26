@@ -1,0 +1,9 @@
+# makefile for drug design, for Raspberry Pi
+
+all: dd_omp dd_thread
+
+dd_omp: dd_omp.cpp
+	g++ -o $* $*.cpp -lm -fopenmp -std=c++11
+
+dd_thread: dd_thread.cpp
+	g++ -o $* $*.cpp -lm -std=c++11 -pthread
