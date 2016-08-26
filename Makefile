@@ -19,7 +19,7 @@ PTHREADS_LIBS=-lpthread
 BOOST_LIBS = -I/opt/boost/include -L/opt/boost/lib -lboost_thread
 ARBB_LIBS=$(TBB_LIBS) -larbb -L/opt/intel/arbb/1.0.0.022/lib/intel64/ -I/opt/intel/arbb/1.0.0.022/include/
 
-TARGETS := dd_serial dd_omp dd_threads # dd_omp_tbb dd_threads_tbb
+TARGETS := dd_serial dd_omp dd_threads # dd_omp_tbb dd_threads_tbb dd_mpi
 	# dd_boost # dd_hadoop
 all:  $(TARGETS)
 #	hadoop jar DDHadoop.jar edu.stolaf.cs.DDHadoop $(DFS)/in $(DFS)/out
@@ -43,6 +43,12 @@ dd_threads: dd_threads.cpp
 
 dd_threads_tbb: dd_threads_tbb.cpp
 	$(CXX) -o dd_threads_tbb dd_threads_tbb.cpp $(LDFLAGS) $(CPP11_THREADS) $(TBB_LIBS) 
+
+dd_mpi_cder:  dd_mpi_cder.cpp
+	mpicxx -o dd_mpi_cder dd_mpi_cder.cpp
+
+dd_mpi:  dd_mpi.cpp
+	mpiCC -std=c++11 -o dd_mpi dd_mpi.cpp
 
 dd_hadoop:  DDHadoop.jar
 
