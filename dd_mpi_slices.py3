@@ -63,7 +63,7 @@ if numProcesses > 1:
 
         n = math.ceil(len(ligands)/nThreads) # ligands per worker
         for p in range(1, nThreads):
-	    comm.send(ligands[(p-1)*n:p*n], dest=p)
+            comm.send(ligands[(p-1)*n:p*n], dest=p)
 
         for p in range(1, nThreads):
             received = comm.recv(source=p)
@@ -78,10 +78,10 @@ if numProcesses > 1:
         print('Achieved by ligand(s)', maxScoreLigands)
 
     else:       # worker
-
-    	ligandList = comm.recv(src=0)
-	maxScore = -1
-    	maxScoreLigands = []
+        
+        ligandList = comm.recv(source=0)
+        maxScore = -1
+        maxScoreLigands = []
 
         for lig in ligandList:
             s = score(lig, protein)
@@ -89,12 +89,12 @@ if numProcesses > 1:
                 maxScore = s
 
                 maxScoreLigands = [lig]
-                print("\n[", pid, "]-->new maxScore ", s, sep='') # show progress
-                print("[", pid, ']', lig, ', ',
-	              sep='', end='', flush=True) # show progress
+                print("\n[", id, "]-->new maxScore ", s, sep='') # show progress
+                print("[", id, ']', lig, ', ',
+                      sep='', end='', flush=True) # show progress
             elif s == maxScore:
                 maxScoreLigands.append(lig)
-                print("[", pid, ']', lig, ', ',
+                print("[", id, ']', lig, ', ',
                       sep='', end='', flush=True) # show progress
             
         print()  # show progress
