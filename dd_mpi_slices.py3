@@ -1,5 +1,6 @@
 # implementation of drug design exemplar
 # python3, mpi4py, introductory
+# usage on Macalester pi cluster:  python run.py dd_mpi_slices.py3 4
 
 import string
 import random
@@ -8,7 +9,6 @@ from mpi4py import MPI
 
 maxLigand = DEFAULT_max_ligand = 5
 nLigands = DEFAULT_nligands = 120
-nThreads = DEFAULT_nthreads = 4
 protein = DEFAULT_protein = \
     "the cat in the hat wore the hat to the cat hat party"
 
@@ -61,11 +61,11 @@ if numProcesses > 1:
         maxScore = -1
         maxScoreLigands = []
 
-        n = math.ceil(len(ligands)/nThreads) # ligands per worker
-        for p in range(1, nThreads):
+        n = math.ceil(len(ligands)/numProcesses) # ligands per worker
+        for p in range(1, numProcesses):
             comm.send(ligands[(p-1)*n:p*n], dest=p)
 
-        for p in range(1, nThreads):
+        for p in range(1, numProcesses):
             received = comm.recv(source=p)
             if received[0] > maxScore:
                 maxScore = received[0]
