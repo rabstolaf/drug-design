@@ -3,12 +3,11 @@
 
 import string
 import random
+import argparse
 
-maxLigand = DEFAULT_max_ligand = 5
-nLigands = DEFAULT_nligands = 120
-nThreads = DEFAULT_nthreads = 4
-protein = DEFAULT_protein = \
-    "the cat in the hat wore the hat to the cat hat party"
+DFLT_maxLigand = 5
+DFLT_nLigands = 120
+DFLT_protein = "the cat in the hat wore the hat to the cat hat party"
 
 # function makeLigand
 #   1 argument:  maximum length of a ligand
@@ -34,30 +33,42 @@ def score(lig, pro):
         return max(score(lig[1:], pro), score(lig, pro[1:]))
 
 # main program
+def main():
+    random.seed(0) # guarantees that each run uses same random number sequence
 
-random.seed(0) # guarantees that each run uses the same random number sequence
-# parse command-line args...
+    # parse command-line args...
+    parser = argparse.ArgumentParser(
+        description="CSinParallel Drug Design simulation - sequential")
+    parser.add_argument('maxLigand', metavar='max-length', type=int, nargs='?',
+        default=DFLT_maxLigand, help='maximum length of a ligand')
+    parser.add_argument('nLigands', metavar='count', type=int, nargs='?',
+        default=DFLT_nLigands, help='number of ligands to generate')
+    parser.add_argument('protein', metavar='protein', type=str, nargs='?',
+        default=DFLT_protein, help='protein string to compare ligands against')
+    args = parser.parse_args()    # parse command-line args...
 
-# generate ligands
-ligands = []
-for l in range(nLigands):
-    ligands.append(makeLigand(maxLigand))
+    # generate ligands
+    ligands = []
+    for l in range(args.nLigands):
+        ligands.append(makeLigand(args.maxLigand))
 
-# determine ligands with highest score
-maxScore = -1
-maxScoreLigands = []
+    # determine ligands with highest score
+    maxScore = -1
+    maxScoreLigands = []
 
-for lig in ligands:
-    s = score(lig, protein)
-    if s > maxScore:
-        maxScore = s
-        maxScoreLigands = [lig]
-        print("\n... new maxScore", s, "  ", lig, end='', flush=True) # show progress
-    elif s == maxScore:
-        maxScoreLigands.append(lig)
-        print(", ", lig, end='', flush=True) # show progress
+    for lig in ligands:
+        s = score(lig, args.protein)
+        if s > maxScore:
+            maxScore = s
+            maxScoreLigands = [lig]
+            print("\n... new maxScore", s, "  ", lig, end='', flush=True) # show progress
+        elif s == maxScore:
+            maxScoreLigands.append(lig)
+            print(", ", lig, end='', flush=True) # show progress
     
 
-print()  # show progress
-print('The maximum score is', maxScore)
-print('Achieved by ligand(s)', maxScoreLigands)
+    print()  # show progress
+    print('The maximum score is', maxScore)
+    print('Achieved by ligand(s)', maxScoreLigands)
+
+main()
