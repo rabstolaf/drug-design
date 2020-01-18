@@ -1,0 +1,29 @@
+#!/bin/bash
+# a test for runs of python versions of drug design exemplar
+#
+# example call (in top level of drug-design repo):
+# bin/pytest dd_serial.py3 5 -v
+#  * the python code dd_serial.py3 is interpreted with arguments   5 -v
+#  * if no file dd_serial.py3.out exists, one is created including code's output
+#  * if file dd_serial.py3.out exists, then dd_serial.py3.out.new is created
+#    including code's output, then compared to dd_serial.py3.out
+PROG="$0"
+USAGE="Usage:  $PROG code [code-args]"
+
+test $# = 0 && { echo "$USAGE" ; exit 1 ; }
+CODE="$1" ; shift
+
+test -f $CODE.out || {
+     python $CODE "$@" | tee $CODE.out
+     wc $CODE.out | awk '{$NF = ""; print}' >> $CODE.out
+     exit
+}
+
+# assert - $CODE.out exists
+python $CODE "$@" | tee $CODE.out.new
+wc $CODE.out.new | awk '{$NF = ""; print}' >> $CODE.out.new
+echo ========== test differences: ==========
+if test $CODE = dd_serial.py3
+then diff $CODE.out $CODE.out.new
+else diff <(tail -3 $CODE.out) <(tail -3 $CODE.out.new)
+fi

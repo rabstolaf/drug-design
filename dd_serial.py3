@@ -2,8 +2,8 @@
 # serial, python3, introductory
 
 import string
-import random
 import argparse
+import random
 
 DFLT_maxLigand = 5
 DFLT_nLigands = 120
@@ -32,6 +32,13 @@ def score(lig, pro):
     else:
         return max(score(lig[1:], pro), score(lig, pro[1:]))
 
+# function printIf
+#   variable number of arguments:  a boolean, then valid arguments for print
+#   state change:  if arg1 is True, call print with the remaining arguments
+def printIf(cond, *positionals, **keywords):
+    if cond:
+        print(*positionals, **keywords)
+
 # main program
 def main():
     random.seed(0) # guarantees that each run uses same random number sequence
@@ -45,6 +52,8 @@ def main():
         default=DFLT_nLigands, help='number of ligands to generate')
     parser.add_argument('protein', metavar='protein', type=str, nargs='?',
         default=DFLT_protein, help='protein string to compare ligands against')
+    parser.add_argument('-verbose', action='store_const', const=True,
+                        default=False, help='print verbose output')
     args = parser.parse_args()    # parse command-line args...
 
     # generate ligands
@@ -61,13 +70,14 @@ def main():
         if s > maxScore:
             maxScore = s
             maxScoreLigands = [lig]
-            print("\n... new maxScore", s, "  ", lig, end='', flush=True) # show progress
+            printIf(args.verbose, "\n... new maxScore {}    {}".format(s, lig),
+                  end='', flush=True)
         elif s == maxScore:
             maxScoreLigands.append(lig)
-            print(", ", lig, end='', flush=True) # show progress
+            printIf(args.verbose, ", ", lig, end='', flush=True)
     
 
-    print()  # show progress
+    printIf(args.verbose)
     print('The maximum score is', maxScore)
     print('Achieved by ligand(s)', maxScoreLigands)
 
