@@ -1,12 +1,13 @@
 # implementation of drug design exemplar
 # python3, multiprocessing, introductory
-# this version assigns each worker a slice of the list of ligands to score
+# in this version, workers obtain their own ligands as needed from a work Queue
 
 import string
 import argparse
 import random
 import math
 from multiprocessing import *
+from queue import Empty
 
 DFLT_nProcs = 4
 DFLT_maxLigand = 5
@@ -44,21 +45,38 @@ def printIf(cond, *positionals, **keywords):
     if cond:
         print(*positionals, **keywords)
 
+# function getLigand - helper function for worker()
+#   1 arg:  work Queue of ligands
+#   state change:  attempts to get() one ligand from arg1
+#   return:  If arg1 is non-empty, return ligand that was obtained, otherwise
+#     return empty string
+
+def getLigand(q):
+    try:
+        val = q.get(False)
+    except Empty:
+        val = ""
+    return val        
+
 # function worker - code executed by each worker process
 #   3 args:  a Queue for communication with main(),
-#      parsed command-line arguments or defaults including protein,
-#      and a list of ligands to score against that protein
+#      a Queue for obtaining ligands to score one-at-a-time, and  
+#      parsed command-line arguments or defaults including protein
 #   state change:  a list having the form   [score, [ligand1, ligand2, ...]]
-#      is put onto the Queue arg1, where score is the maximal score among
-#      ligands in arg3 when compared against arg2.protein, and
-#      ligand1, ligand2, ... are all ligands in arg3 achieving that score
+#      is put onto the communication Queue arg1, where
+#      score is maximal score against arg3.protein among ligands that
+#      this worker obtained from the work Queue arg2, and
+#      ligand1, ligand2, ... are this worker's ligands achieving that score
 
-def worker(q, args, ligandList):
+def worker(commq, workq, args):
     pid = current_process().pid
     maxScore = -1
     maxScoreLigands = []
 
-    for lig in ligandList:
+    while True:
+        lig = getLigand(workq)
+        if lig == "":
+            break
         s = score(lig, args.protein)
         if s > maxScore:
             maxScore = s
@@ -72,7 +90,7 @@ def worker(q, args, ligandList):
                     end='', flush=True) 
     
     printIf(args.verbose)  # print final newline
-    q.put([maxScore, maxScoreLigands])
+    commq.put([maxScore, maxScoreLigands])
 
 
 # main program
@@ -96,25 +114,24 @@ def main():
     args = parser.parse_args()
 
     # generate ligands
-    ligands = []
+    ligands = Queue()
     for l in range(args.nLigands):
-        ligands.append(makeLigand(args.maxLigand))
+        ligands.put(makeLigand(args.maxLigand))
 
     # determine ligands with highest score
     maxScore = -1
     maxScoreLigands = []
 
-    q = Queue()
+    commq = Queue()
     workers = []
     nWorkers = args.nProcs-1 
-    n = math.ceil(len(ligands)/nWorkers) # ligands per worker
-    for p in range(nWorkers):
-        proc = Process(target=worker, args=(q, args, ligands[p*n:(p+1)*n]))
+    for w in range(nWorkers):
+        proc = Process(target=worker, args=(commq, ligands, args))
         workers.append(proc)
         proc.start()
-    for p in workers:
-        p.join()
-        msg = q.get()
+    for w in workers:
+        w.join()
+        msg = commq.get()
         if msg[0] > maxScore:
             maxScore = msg[0]
             maxScoreLigands = msg[1]
