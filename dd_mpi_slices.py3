@@ -3,14 +3,14 @@
 # usage on Macalester pi cluster:  python run.py dd_mpi_slices.py3 4
 
 import string
+import argparse
 import random
 import math
 from mpi4py import MPI
 
-maxLigand = DEFAULT_max_ligand = 5
-nLigands = DEFAULT_nligands = 120
-protein = DEFAULT_protein = \
-    "the cat in the hat wore the hat to the cat hat party"
+DFLT_maxLigand = 5
+DFLT_nLigands = 120
+DFLT_protein = "the cat in the hat wore the hat to the cat hat party"
 
 # function makeLigand
 #   1 argument:  maximum length of a ligand
@@ -35,27 +35,49 @@ def score(lig, pro):
     else:
         return max(score(lig[1:], pro), score(lig, pro[1:]))
 
-#def worker(q, ligandList):
+# function printIf - used for verbose output
+#   variable number of arguments:  a boolean, then valid arguments for print
+#   state change:  if arg1 is True, call print with the remaining arguments
 
+def printIf(cond, *positionals, **keywords):
+    if cond:
+        print(*positionals, **keywords)
 
 # main program
 
-random.seed(0) # guarantees that each run uses the same random number sequence
-# parse command-line args...
+def main():
+    random.seed(0) # guarantees that each run uses same random number sequence
 
-# set up MPI and retrieve basic data
-comm = MPI.COMM_WORLD
-id = comm.Get_rank()            #number of the process running the code
-numProcesses = comm.Get_size()  #total number of processes running
-myHostName = MPI.Get_processor_name()  #machine name running the code
+    # parse command-line args...
+    parser = argparse.ArgumentParser(
+        description="CSinParallel Drug Design simulation - sequential")
+    parser.add_argument('maxLigand', metavar='max-length', type=int, nargs='?',
+        default=DFLT_maxLigand, help='maximum length of a ligand')
+    parser.add_argument('nLigands', metavar='count', type=int, nargs='?',
+        default=DFLT_nLigands, help='number of ligands to generate')
+    parser.add_argument('protein', metavar='protein', type=str, nargs='?',
+        default=DFLT_protein, help='protein string to compare ligands against')
+    parser.add_argument('-verbose', action='store_const', const=True,
+                        default=False, help='print verbose output')
+    args = parser.parse_args()
 
-if numProcesses > 1:
+    # set up MPI and retrieve basic data
+    comm = MPI.COMM_WORLD
+    id = comm.Get_rank()            #number of the process running the code
+    numProcesses = comm.Get_size()  #total number of processes running
+    myHostName = MPI.Get_processor_name()  #machine name running the code
+
+    if numProcesses <= 1:
+        print("Need at least two processes, aborting")
+        return
+
+    # assert - numProcesses > 1
     if id == 0:    # master
-       
+   
         # generate ligands
         ligands = []
-        for l in range(nLigands):
-            ligands.append(makeLigand(maxLigand))
+        for l in range(args.nLigands):
+            ligands.append(makeLigand(args.maxLigand))
 
         # determine ligands with highest score
         maxScore = -1
@@ -78,25 +100,26 @@ if numProcesses > 1:
         print('Achieved by ligand(s)', maxScoreLigands)
 
     else:       # worker
-        
+    
         ligandList = comm.recv(source=0)
         maxScore = -1
         maxScoreLigands = []
 
         for lig in ligandList:
-            s = score(lig, protein)
+            s = score(lig, args.protein)
             if s > maxScore:
                 maxScore = s
 
                 maxScoreLigands = [lig]
-                print("\n[", id, "]-->new maxScore ", s, sep='') # show progress
-                print("[", id, ']', lig, ', ',
-                      sep='', end='', flush=True) # show progress
+                printIf(args.verbose, "\n[{}]-->new maxScore {}".format(pid, s))
+                printIf(args.verbose, "[{}]{}, ".format(pid, lig),
+                        end='', flush=True) 
             elif s == maxScore:
                 maxScoreLigands.append(lig)
-                print("[", id, ']', lig, ', ',
-                      sep='', end='', flush=True) # show progress
-            
-        print()  # show progress
+                printIf(args.verbose, "[{}]{}, ".format(pid, lig),
+                    end='', flush=True) 
+        
+        printIf(args.verbose)  # print final newline
         comm.send([maxScore, maxScoreLigands], dest=0)
 
+main()
