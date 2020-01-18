@@ -1,5 +1,5 @@
 # implementation of drug design exemplar
-# serial, python3, introductory
+# python3, sequential, introductory
 
 import string
 import argparse
